@@ -1,0 +1,823 @@
+--[[ C00LCLAN V1.1 - Polished ]]
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local Lighting = game:GetService("Lighting")
+local SoundService = game:GetService("SoundService")
+local Debris = game:GetService("Debris")
+local CollectionService = game:GetService("CollectionService")
+
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+local Mouse = Player:GetMouse()
+
+local function getChar()
+	return Player.Character or Player.CharacterAdded:Wait()
+end
+
+local function getHum()
+	local c = Player.Character
+	return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function getHRP()
+	local c = Player.Character
+	return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local State = {
+	connections = {},
+	infJumpOn = false,
+	noclipOn = false,
+	espOn = false,
+	spinOn = false,
+	flyOn = false,
+	invisOn = false,
+	savedCFrame = nil,
+	customBinds = {},
+	spinBAV = nil,
+	lockBP = nil,
+	flyBG = nil,
+	flyBV = nil,
+	hoverHeight = nil,
+}
+
+local function addConn(name, conn)
+	if State.connections[name] then
+		State.connections[name]:Disconnect()
+	end
+	State.connections[name] = conn
+end
+
+local function removeConn(name)
+	if State.connections[name] then
+		State.connections[name]:Disconnect()
+		State.connections[name] = nil
+	end
+end
+
+local GUI_WIDTH = 400
+local GUI_HEIGHT = 320
+local TITLE_HEIGHT = 30
+local NAV_HEIGHT = 30
+local FOOTER_HEIGHT = 30
+local GRID_PADDING = 4
+local GRID_COLUMNS = 4
+
+math.randomseed(os.time())
+local charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+local function randStr(len)
+	local t = {}
+	for i = 1, len or 10 do
+		local idx = math.random(1, #charset)
+		t[i] = charset:sub(idx, idx)
+	end
+	return table.concat(t)
+end
+
+local FunctionManager = {
+	CategorizedFunctions = {All = {}},
+	Categories = {"All"},
+	CurrentCategoryIndex = 1,
+	Descriptions = {},
+	ISFE = {},
+	OnFunctionAdded = Instance.new("BindableEvent"),
+}
+
+function FunctionManager:register(name, callback, category, description, FE)
+	category = category or "General"
+	if not self.CategorizedFunctions[category] then
+		self.CategorizedFunctions[category] = {}
+		table.insert(self.Categories, category)
+	end
+	self.CategorizedFunctions[category][name] = callback
+	self.CategorizedFunctions.All[name] = callback
+	self.Descriptions[name] = description or ""
+	self.ISFE[name] = (description == "NOT FE") and "no" or (FE or "yes")
+	self.OnFunctionAdded:Fire(category, name, callback)
+	self.OnFunctionAdded:Fire("All", name, callback)
+end
+
+function FunctionManager:getCurrentCategory()
+	return self.Categories[self.CurrentCategoryIndex]
+end
+
+function FunctionManager:cycleCategory()
+	self.CurrentCategoryIndex = self.CurrentCategoryIndex % #self.Categories + 1
+	return self:getCurrentCategory()
+end
+
+function FunctionManager:getFunctionsInCategory(cat)
+	return self.CategorizedFunctions[cat] or {}
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = randStr(10)
+screenGui.ResetOnSpawn = false
+screenGui.Parent = PlayerGui
+
+local notificationContainer = Instance.new("Frame")
+notificationContainer.Name = "NotificationContainer"
+notificationContainer.Size = UDim2.new(1, 0, 1, 0)
+notificationContainer.BackgroundTransparency = 1
+notificationContainer.ZIndex = 100
+notificationContainer.Parent = screenGui
+
+local notificationLayout = Instance.new("UIListLayout")
+notificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
+notificationLayout.Padding = UDim.new(0, 6)
+notificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+notificationLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+notificationLayout.Parent = notificationContainer
+
+local function Notify(text, title, duration)
+	duration = duration or 4
+	local frame = Instance.new("Frame")
+	frame.AnchorPoint = Vector2.new(1, 1)
+	frame.Size = UDim2.new(0, 300, 0, 70)
+	frame.Position = UDim2.new(1, 320, 1, -10)
+	frame.BackgroundColor3 = Color3.fromRGB(40, 0, 0)
+	frame.BorderSizePixel = 0
+	frame.ZIndex = 200
+	frame.Parent = notificationContainer
+	
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Size = UDim2.new(1, -10, 0, 24)
+	titleLabel.Position = UDim2.new(0, 5, 0, 4)
+	titleLabel.Font = Enum.Font.SourceSansBold
+	titleLabel.Text = title or "Notice"
+	titleLabel.TextColor3 = Color3.new(1, 1, 1)
+	titleLabel.TextSize = 18
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.ZIndex = 201
+	titleLabel.Parent = frame
+	
+	local bodyLabel = Instance.new("TextLabel")
+	bodyLabel.BackgroundTransparency = 1
+	bodyLabel.Size = UDim2.new(1, -10, 1, -30)
+	bodyLabel.Position = UDim2.new(0, 5, 0, 28)
+	bodyLabel.Font = Enum.Font.SourceSans
+	bodyLabel.Text = text or ""
+	bodyLabel.TextColor3 = Color3.new(1, 1, 1)
+	bodyLabel.TextSize = 14
+	bodyLabel.TextWrapped = true
+	bodyLabel.TextXAlignment = Enum.TextXAlignment.Left
+	bodyLabel.ZIndex = 201
+	bodyLabel.Parent = frame
+	
+	TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(1, -10, 1, -10)
+	}):Play()
+	
+	task.delay(duration, function()
+		local fadeOut = TweenService:Create(frame, TweenInfo.new(0.3), {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(1, 320, 1, -10)
+		})
+		TweenService:Create(titleLabel, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+		TweenService:Create(bodyLabel, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+		fadeOut:Play()
+		fadeOut.Completed:Wait()
+		frame:Destroy()
+	end)
+end
+
+local function NotifyERR(text)
+	Notify(text, "ERROR", 3)
+end
+
+Notify("Welcome to C00lClan!", "Have fun!", 3)
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, GUI_WIDTH, 0, GUI_HEIGHT)
+mainFrame.Position = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 5, 5)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local tooltip = Instance.new("TextLabel")
+tooltip.Size = UDim2.new(0, 200, 0, 40)
+tooltip.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+tooltip.BorderSizePixel = 0
+tooltip.Visible = false
+tooltip.ZIndex = 100
+tooltip.TextColor3 = Color3.new(1, 1, 1)
+tooltip.TextWrapped = true
+tooltip.Parent = screenGui
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, TITLE_HEIGHT)
+titleBar.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -60, 1, 0)
+titleLabel.Position = UDim2.new(0, 4, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "C00LCLAN V1.1"
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextSize = 18
+titleLabel.TextColor3 = Color3.new(1, 1, 1)
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 30, 1, 0)
+minBtn.Position = UDim2.new(1, -30, 0, 0)
+minBtn.Text = "_"
+minBtn.Font = Enum.Font.SourceSansBold
+minBtn.TextSize = 18
+minBtn.TextColor3 = Color3.new(1, 1, 1)
+minBtn.BackgroundColor3 = Color3.fromRGB(80, 10, 10)
+minBtn.BorderSizePixel = 0
+minBtn.Parent = titleBar
+
+local dragging, dragInput, dragStart, startPos
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = mainFrame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+titleBar.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		dragInput = input
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - dragStart
+		mainFrame.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
+	end
+end)
+
+local catNav = Instance.new("Frame")
+catNav.Size = UDim2.new(1, 0, 0, NAV_HEIGHT)
+catNav.Position = UDim2.new(0, 0, 0, TITLE_HEIGHT)
+catNav.BackgroundTransparency = 1
+catNav.Parent = mainFrame
+
+local leftCat = Instance.new("TextButton")
+leftCat.Size = UDim2.new(0, 50, 1, 0)
+leftCat.Text = "<"
+leftCat.Font = Enum.Font.SourceSansBold
+leftCat.TextSize = 24
+leftCat.TextColor3 = Color3.new(1, 1, 1)
+leftCat.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
+leftCat.BorderSizePixel = 0
+leftCat.Parent = catNav
+
+local catLabel = Instance.new("TextLabel")
+catLabel.Size = UDim2.new(1, -100, 1, 0)
+catLabel.Position = UDim2.new(0, 50, 0, 0)
+catLabel.BackgroundTransparency = 1
+catLabel.Text = "All"
+catLabel.Font = Enum.Font.SourceSansBold
+catLabel.TextSize = 18
+catLabel.TextColor3 = Color3.new(1, 1, 1)
+catLabel.Parent = catNav
+
+local rightCat = leftCat:Clone()
+rightCat.Position = UDim2.new(1, -50, 0, 0)
+rightCat.Text = ">"
+rightCat.Parent = catNav
+
+local gridFrame = Instance.new("ScrollingFrame")
+gridFrame.Size = UDim2.new(1, -2*GRID_PADDING, 0, GUI_HEIGHT - TITLE_HEIGHT - NAV_HEIGHT - FOOTER_HEIGHT - 2*GRID_PADDING)
+gridFrame.Position = UDim2.new(0, GRID_PADDING, 0, TITLE_HEIGHT + NAV_HEIGHT + GRID_PADDING)
+gridFrame.BackgroundTransparency = 1
+gridFrame.BorderSizePixel = 0
+gridFrame.ScrollBarThickness = 6
+gridFrame.Parent = mainFrame
+
+local gridLayout = Instance.new("UIGridLayout")
+gridLayout.CellSize = UDim2.new(0, (GUI_WIDTH - 2*GRID_PADDING - (GRID_COLUMNS-1)*GRID_PADDING)/GRID_COLUMNS, 0, 40)
+gridLayout.CellPadding = UDim2.new(0, GRID_PADDING, 0, GRID_PADDING)
+gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+gridLayout.Parent = gridFrame
+
+local footer = Instance.new("Frame")
+footer.Size = UDim2.new(1, 0, 0, FOOTER_HEIGHT)
+footer.Position = UDim2.new(0, 0, 1, -FOOTER_HEIGHT)
+footer.BackgroundTransparency = 1
+footer.Parent = mainFrame
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(1, 0, 1, 0)
+closeBtn.Text = "Close"
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.TextSize = 18
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
+closeBtn.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = footer
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	mainFrame.BackgroundTransparency = minimized and 1 or 0
+	gridFrame.Visible = not minimized
+	catNav.Visible = not minimized
+	footer.Visible = not minimized
+	minBtn.Text = minimized and "◻" or "_"
+end)
+
+local function updateGrid()
+	for _, c in ipairs(gridFrame:GetChildren()) do
+		if c:IsA("TextButton") then
+			c:Destroy()
+		end
+	end
+	
+	local cat = FunctionManager:getCurrentCategory()
+	catLabel.Text = cat
+	
+	for name, cb in pairs(FunctionManager:getFunctionsInCategory(cat)) do
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1, 0, 0, 40)
+		btn.BackgroundColor3 = (FunctionManager.ISFE[name] == "no") and Color3.fromRGB(72, 100, 87) or Color3.fromRGB(70, 10, 10)
+		btn.BorderSizePixel = 0
+		btn.Font = Enum.Font.SourceSansBold
+		btn.TextSize = 16
+		btn.TextColor3 = Color3.new(1, 1, 1)
+		btn.Text = name
+		btn.TextWrapped = true
+		btn.Parent = gridFrame
+		
+		local desc = FunctionManager.Descriptions[name]
+		btn.MouseMoved:Connect(function()
+			if desc and desc ~= "" then
+				tooltip.Text = desc
+				tooltip.Position = UDim2.new(0, Mouse.X, 0, Mouse.Y - tooltip.Size.Y.Offset - 4)
+				tooltip.Visible = true
+			end
+		end)
+		btn.MouseLeave:Connect(function()
+			tooltip.Visible = false
+		end)
+		btn.MouseButton1Click:Connect(function()
+			pcall(cb)
+		end)
+	end
+end
+
+leftCat.MouseButton1Click:Connect(function()
+	FunctionManager.CurrentCategoryIndex = (FunctionManager.CurrentCategoryIndex - 2) % #FunctionManager.Categories + 1
+	updateGrid()
+end)
+rightCat.MouseButton1Click:Connect(function()
+	FunctionManager:cycleCategory()
+	updateGrid()
+end)
+closeBtn.MouseButton1Click:Connect(function()
+	for _, conn in pairs(State.connections) do
+		pcall(function() conn:Disconnect() end)
+	end
+	screenGui:Destroy()
+end)
+
+FunctionManager.OnFunctionAdded.Event:Connect(updateGrid)
+updateGrid()
+
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		local fn = State.customBinds[input.KeyCode]
+		if fn and type(fn) == "function" then
+			pcall(fn)
+		end
+	end
+end)
+
+--[[ FUNCTIONS ]]
+
+FunctionManager:register("JumpUp", function()
+	local hrp = getHRP()
+	if hrp then
+		hrp.Velocity = Vector3.new(0, 100, 0)
+	end
+end, "Movement", "Leap!")
+
+FunctionManager:register("Sit", function()
+	local hum = getHum()
+	if hum then
+		hum.Sit = true
+	end
+end, "Movement", "SIT DOWN")
+
+FunctionManager:register("INF JUMP", function()
+	if State.connections.infJump then
+		removeConn("infJump")
+		Notify("Infinite Jump OFF", "SYSTEM", 2)
+		return
+	end
+	
+	local debounce = false
+	addConn("infJump", UserInputService.JumpRequest:Connect(function()
+		if debounce then return end
+		debounce = true
+		local hum = getHum()
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+		task.wait()
+		debounce = false
+	end))
+	Notify("Infinite Jump ON", "SYSTEM", 2)
+end, "Movement", "Jump Forever!")
+
+FunctionManager:register("WalkSpeed Slider", function()
+	if screenGui:FindFirstChild("WalkSpeedModal") then return end
+	local hum = getHum()
+	if not hum then return NotifyERR("No Humanoid!") end
+	
+	local overlay = Instance.new("Frame")
+	overlay.Name = "WalkSpeedModal"
+	overlay.Size = UDim2.new(1, 0, 1, 0)
+	overlay.BackgroundColor3 = Color3.new(0, 0, 0)
+	overlay.BackgroundTransparency = 0.5
+	overlay.ZIndex = 50
+	overlay.Parent = screenGui
+	
+	local panel = Instance.new("Frame")
+	panel.Size = UDim2.new(0, 300, 0, 100)
+	panel.Position = UDim2.new(0.5, -150, 0.5, -50)
+	panel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	panel.BorderSizePixel = 0
+	panel.ZIndex = 51
+	panel.Parent = overlay
+	
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.new(0, 60, 0, 24)
+	closeBtn.Position = UDim2.new(1, -64, 0, 4)
+	closeBtn.Text = "Close"
+	closeBtn.Font = Enum.Font.SourceSansBold
+	closeBtn.TextSize = 14
+	closeBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+	closeBtn.TextColor3 = Color3.new(1, 1, 1)
+	closeBtn.ZIndex = 52
+	closeBtn.Parent = panel
+	closeBtn.MouseButton1Click:Connect(function() overlay:Destroy() end)
+	
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -8, 0, 24)
+	label.Position = UDim2.new(0, 4, 0, 4)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.SourceSansBold
+	label.TextSize = 18
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Text = "WalkSpeed: " .. math.floor(hum.WalkSpeed)
+	label.ZIndex = 52
+	label.Parent = panel
+	
+	local track = Instance.new("Frame")
+	track.Size = UDim2.new(1, -16, 0, 20)
+	track.Position = UDim2.new(0, 8, 0, 40)
+	track.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	track.BorderSizePixel = 0
+	track.ZIndex = 51
+	track.Parent = panel
+	
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(math.clamp((hum.WalkSpeed - 8)/92, 0, 1), 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+	fill.BorderSizePixel = 0
+	fill.ZIndex = 52
+	fill.Parent = track
+	
+	local dragging = false
+	local function update(x)
+		local rel = math.clamp((x - track.AbsolutePosition.X)/track.AbsoluteSize.X, 0, 1)
+		local v = math.floor(8 + 92 * rel)
+		hum.WalkSpeed = v
+		label.Text = "WalkSpeed: " .. v
+		fill.Size = UDim2.new(rel, 0, 1, 0)
+	end
+	
+	track.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			update(i.Position.X)
+		end
+	end)
+	track.InputEnded:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(i)
+		if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+			update(i.Position.X)
+		end
+	end)
+end, "Movement", "Control walkspeed!")
+
+FunctionManager:register("JumpPowerSlider", function()
+	if screenGui:FindFirstChild("JumpPowerModal") then return end
+	local hum = getHum()
+	if not hum then return NotifyERR("No Humanoid!") end
+	hum.UseJumpPower = true
+	
+	local overlay = Instance.new("Frame")
+	overlay.Name = "JumpPowerModal"
+	overlay.Size = UDim2.new(1, 0, 1, 0)
+	overlay.BackgroundColor3 = Color3.new(0, 0, 0)
+	overlay.BackgroundTransparency = 0.5
+	overlay.ZIndex = 50
+	overlay.Parent = screenGui
+	
+	local panel = Instance.new("Frame")
+	panel.Size = UDim2.new(0, 300, 0, 100)
+	panel.Position = UDim2.new(0.5, -150, 0.5, -50)
+	panel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	panel.BorderSizePixel = 0
+	panel.ZIndex = 51
+	panel.Parent = overlay
+	
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.new(0, 60, 0, 24)
+	closeBtn.Position = UDim2.new(1, -64, 0, 4)
+	closeBtn.Text = "Close"
+	closeBtn.Font = Enum.Font.SourceSansBold
+	closeBtn.TextSize = 14
+	closeBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+	closeBtn.TextColor3 = Color3.new(1, 1, 1)
+	closeBtn.ZIndex = 52
+	closeBtn.Parent = panel
+	closeBtn.MouseButton1Click:Connect(function() overlay:Destroy() end)
+	
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -8, 0, 24)
+	label.Position = UDim2.new(0, 4, 0, 4)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.SourceSansBold
+	label.TextSize = 18
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Text = "JumpPower: " .. math.floor(hum.JumpPower)
+	label.ZIndex = 52
+	label.Parent = panel
+	
+	local track = Instance.new("Frame")
+	track.Size = UDim2.new(1, -16, 0, 20)
+	track.Position = UDim2.new(0, 8, 0, 40)
+	track.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	track.BorderSizePixel = 0
+	track.ZIndex = 51
+	track.Parent = panel
+	
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(math.clamp((hum.JumpPower - 50)/150, 0, 1), 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+	fill.BorderSizePixel = 0
+	fill.ZIndex = 52
+	fill.Parent = track
+	
+	local dragging = false
+	local function update(x)
+		local rel = math.clamp((x - track.AbsolutePosition.X)/track.AbsoluteSize.X, 0, 1)
+		local v = math.floor(50 + 150 * rel)
+		hum.JumpPower = v
+		label.Text = "JumpPower: " .. v
+		fill.Size = UDim2.new(rel, 0, 1, 0)
+	end
+	
+	track.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			update(i.Position.X)
+		end
+	end)
+	track.InputEnded:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(i)
+		if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+			update(i.Position.X)
+		end
+	end)
+end, "Movement", "Control jumppower")
+
+FunctionManager:register("Server Hop", function()
+	local PlaceId = game.PlaceId
+	local JobId = game.JobId
+	local success, res = pcall(function()
+		return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
+	end)
+	if not success then return NotifyERR("HTTP failed") end
+	local body = HttpService:JSONDecode(res)
+	if not body or not body.data then return NotifyERR("Invalid response") end
+	local servers = {}
+	for _, v in ipairs(body.data) do
+		if v.playing < v.maxPlayers and v.id ~= JobId then
+			table.insert(servers, v.id)
+		end
+	end
+	if #servers == 0 then return NotifyERR("No servers") end
+	TeleportService:TeleportToPlaceInstance(PlaceId, servers[math.random(1, #servers)], Player)
+end, "Utility", "Changes Servers")
+
+FunctionManager:register("TP Behind Closest", function()
+	local hrp = getHRP()
+	if not hrp then return NotifyERR("No HRP!") end
+	local closestPlayer, shortestDist = nil, math.huge
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player and plr.Character then
+			local otherHRP = plr.Character:FindFirstChild("HumanoidRootPart")
+			if otherHRP then
+				local dist = (otherHRP.Position - hrp.Position).Magnitude
+				if dist < shortestDist then
+					shortestDist = dist
+					closestPlayer = plr
+				end
+			end
+		end
+	end
+	if closestPlayer and closestPlayer.Character then
+		local targetHRP = closestPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if targetHRP then
+			hrp.CFrame = CFrame.new(targetHRP.Position - targetHRP.CFrame.LookVector * 3, targetHRP.Position)
+		end
+	else
+		NotifyERR("No nearby player")
+	end
+end, "Movement", "Omae wa mou shindeiru")
+
+FunctionManager:register("ESP Toggle", function()
+	State.espOn = not State.espOn
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player and plr.Character then
+			local head = plr.Character:FindFirstChild("Head")
+			if head then
+				local bb = head:FindFirstChild("ESP") or Instance.new("BillboardGui", head)
+				bb.Name = "ESP"
+				bb.Size = UDim2.new(0, 80, 0, 20)
+				bb.AlwaysOnTop = true
+				local lbl = bb:FindFirstChild("Name") or Instance.new("TextLabel", bb)
+				lbl.Name = "Name"
+				lbl.BackgroundTransparency = 1
+				lbl.Size = UDim2.new(1, 0, 1, 0)
+				lbl.TextColor3 = Color3.new(1, 0, 0)
+				lbl.TextScaled = true
+				lbl.Text = plr.Name
+				bb.Enabled = State.espOn
+			end
+		end
+	end
+	Notify("ESP " .. (State.espOn and "ON" or "OFF"), "SYSTEM", 2)
+end, "Visual", "Wallhacks")
+
+FunctionManager:register("Spin Bot", function()
+	State.spinOn = not State.spinOn
+	if State.spinOn then
+		local hrp = getHRP()
+		if not hrp then return NotifyERR("No HRP!") end
+		State.lockBP = Instance.new("BodyPosition")
+		State.lockBP.Position = hrp.Position
+		State.lockBP.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+		State.lockBP.P = 1e5
+		State.lockBP.Parent = hrp
+		State.spinBAV = Instance.new("BodyAngularVelocity")
+		State.spinBAV.AngularVelocity = Vector3.new(0, 10000, 0)
+		State.spinBAV.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+		State.spinBAV.P = 1e5
+		State.spinBAV.Parent = hrp
+		Notify("Spin Bot ON", "SYSTEM", 2)
+	else
+		if State.spinBAV then State.spinBAV:Destroy(); State.spinBAV = nil end
+		if State.lockBP then State.lockBP:Destroy(); State.lockBP = nil end
+		Notify("Spin Bot OFF", "SYSTEM", 2)
+	end
+end, "Visual", "Spin")
+
+FunctionManager:register("Save Position", function()
+	local hrp = getHRP()
+	if hrp then
+		State.savedCFrame = hrp.CFrame
+		Notify("Position Saved", "SYSTEM", 2)
+	end
+end, "Utility", "Checkpoint")
+
+FunctionManager:register("Load Position", function()
+	local hrp = getHRP()
+	if State.savedCFrame and hrp then
+		hrp.CFrame = State.savedCFrame
+		Notify("Position Loaded", "SYSTEM", 2)
+	else
+		NotifyERR("No saved position")
+	end
+end, "Utility", "Reload")
+
+FunctionManager:register("No-Clip", function()
+	State.noclipOn = not State.noclipOn
+	if State.noclipOn then
+		local hrp = getHRP()
+		if not hrp then return NotifyERR("No HRP!") end
+		State.hoverHeight = hrp.Position.Y
+		addConn("noclip", RunService.Stepped:Connect(function()
+			local char = getChar()
+			if not char then return end
+			for _, part in ipairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = false
+				end
+			end
+			local h = getHRP()
+			if h then
+				local p = h.Position
+				h.CFrame = CFrame.new(p.X, State.hoverHeight, p.Z)
+			end
+		end))
+		Notify("No-Clip ON", "SYSTEM", 2)
+	else
+		removeConn("noclip")
+		local char = getChar()
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = true
+			end
+		end
+		Notify("No-Clip OFF", "SYSTEM", 2)
+	end
+end, "Movement", "NOCLIP")
+
+FunctionManager:register("Fly", function()
+	State.flyOn = not State.flyOn
+	if State.flyOn then
+		local hrp = getHRP()
+		if not hrp then return NotifyERR("No HRP!") end
+		State.flyBG = Instance.new("BodyGyro")
+		State.flyBG.P = 9e4
+		State.flyBG.MaxTorque = Vector3.new(9e4, 9e4, 9e4)
+		State.flyBG.CFrame = hrp.CFrame
+		State.flyBG.Parent = hrp
+		State.flyBV = Instance.new("BodyVelocity")
+		State.flyBV.MaxForce = Vector3.new(9e4, 9e4, 9e4)
+		State.flyBV.Velocity = Vector3.new(0, 0, 0)
+		State.flyBV.Parent = hrp
+		addConn("fly", RunService.Heartbeat:Connect(function()
+			local h = getHRP()
+			if not h then return end
+			local cam = workspace.CurrentCamera.CFrame
+			local dir = Vector3.new()
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.LookVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.LookVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.RightVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.RightVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0, 1, 0) end
+			if dir.Magnitude > 0 then dir = dir.Unit * 50 end
+			State.flyBV.Velocity = dir
+			State.flyBG.CFrame = CFrame.new(h.Position, h.Position + cam.LookVector)
+		end))
+		Notify("Fly ON", "SYSTEM", 2)
+	else
+		removeConn("fly")
+		if State.flyBG then State.flyBG:Destroy(); State.flyBG = nil end
+		if State.flyBV then State.flyBV:Destroy(); State.flyBV = nil end
+		Notify("Fly OFF", "SYSTEM", 2)
+	end
+end, "Movement", "Fly!")
+
+FunctionManager:register("DANCE", function()
+	local hum = getHum()
+	if hum then
+		local anim = Instance.new("Animation")
+		anim.AnimationId = "rbxassetid://27789359"
+		hum:LoadAnimation(anim):Play()
+	end
+end, "Fun", "DANCE")
+
+FunctionManager:register("DarkDex", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/Babyhamsta/RBLX_Scripts/main/Universal/BypassedDarkDexV3.lua"))()
+end, "General", "Explorer")
+
+FunctionManager:register("SimpleSpy", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/SimpleSpyV3/main.lua"))()
+end, "General", "Remote spy")
+
+FunctionManager:register("HatHub", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/inkdupe/hat-scripts/refs/heads/main/updatedhathub.lua"))()
+end, "Troll", "Hat script")
+
+FunctionManager:register("Part Grab", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/v0c0n1337/scripts/refs/heads/main/Unachored_parts_controller_v2.lua.txt"))()
+end, "Troll", "Part controller")
+
+FunctionManager:register("Fling GUI", function()
+	loadstring(game:HttpGet("https://pastebin.com/raw/VynRhxJV"))()
+end, "Troll", "Fling players")
